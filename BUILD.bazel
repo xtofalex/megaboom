@@ -322,8 +322,9 @@ boom_regfile_rams = {
 
 boom_tile_macros = [x + "_generate_abstract" for x in all_srams.keys()]
 
-orfs_flow(
+[orfs_flow(
     name = "BoomTile",
+    abstract_stage = "grt" if variant == "base" else "floorplan",
     arguments = SKIP_REPORT_METRICS | {
         "PDN_TCL": "$(PLATFORM_DIR)/openRoad/pdn/BLOCKS_grid_strategy.tcl",
         # repair_timing runs for hours in floorplan
@@ -363,6 +364,32 @@ orfs_flow(
             ":boomtile-macro-placement",
         ],
         "place": [":io-boomtile"],
-    },
+    } | ({
+        # For the "naja" variant, include additional sources in the floorplan stage
+        "floorplan": [":naja"],
+    } if variant == "naja" else {}),
+    # Optionally adjust stage_outputs if needed for "naja" variant
+    stage_outputs = {
+        # Example: Rename synthesis output file for "naja" variant
+        "synth": {"1_synth.v": "1_synth_unedited.v"},
+    } if variant == "naja" else {},
     verilog_files = all_source_files,
+    variant = variant,
+) for variant in ["base", "naja"]]
+
+# fish out the file that we want as input to the "naja" rule
+# below.
+filegroup(
+    name = "boomtile_unedited",
+    srcs = ["boomtile_synth"],
+    output_group = "1_synth_unedited.v",
+)
+
+# Read in the renamed synthesis output from above and provide
+# the original name to the next stage
+genrule(
+    name = "naja",
+    srcs = [":1_synth_unedited.v"],
+    outs = ["results/asap7/BoomTile/naja/1_synth.v"],
+    cmd = "mkdir -p `dirname $@`; echo \"// imagine naja edits in this file\" > $@ && cat $< >> $@",
 )
